@@ -49,10 +49,3 @@ def control_fn(t, state):
 # Run simulation
 time, y, ydot, i, u = system.simulate(u_fn=control_fn, T=3.0)
 ```
-
-## Future Work
-
-- AI-based PID optimization (genetic algorithms, RL)
-- Disturbance rejection testing
-- Setpoint tracking scenarios
-- Parameter uncertainty analysis
