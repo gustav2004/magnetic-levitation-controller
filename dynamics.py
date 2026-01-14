@@ -15,7 +15,7 @@ class Dynamics:
             k: float =1e-4,         # magnetic force constant
 
             # inital conditions
-            y0: float = 0.1,  
+            y0: float = 0.01,  # Start near floor (1cm)
             ydot0: float = 0.0,
             i0: float = 0.0,        # initial current
             
