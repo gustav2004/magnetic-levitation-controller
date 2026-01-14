@@ -39,6 +39,10 @@ class Dynamics:
 
         # current state (copy of defaults)
         self.state: List[float] = [y0, ydot0, i0]
+        
+        # disturbance function (can be set by user)
+        self.disturbance_fn: Optional[Callable[[float], float]] = None
+        self.current_time: float = 0.0
     
     def reset(self, state=None):    # use to change state-values or reset to default
 
@@ -46,25 +50,31 @@ class Dynamics:
             state = self.default_state   # default values
         
         self.state = list(state)    # list() makes sure we have a list here
+        self.current_time = 0.0     # reset time tracking
         return self.state
+    
+    # disturbance function that applies a force to the object, allowing more complex control scenarios
+    
+    def set_disturbance(self, disturbance_fn: Optional[Callable[[float], float]]):
+        self.disturbance_fn = disturbance_fn
 
     # ----------- help funcs ----------------
     def _sat(self, x:float, low: float, high: float) -> float:
-        return max(low, min(x, high))       #
+        return max(low, min(x, high))       
     
     def _mag_force(self, i: float, y: float) -> float:      # calcs the mag force on the ball
         dist = max(y, self.y_floor)
         return self.k * (i**2) / (dist**2)
     
     # -------------- dynamics -------------------
-    def derivatives(self, state, u_inp):
+    def derivatives(self, state, u_inp, disturbance: float = 0.0):
         y, ydot, i = state              
         u_inp = self._sat(u_inp, self.u_inp_min, self.u_inp_max)
 
         # physics                   
-        Fmag = self._mag_force(i, y)                 # uses helper to calc mag force
-        yddot = (Fmag - self.m * self.g) / self.m    # acceleration in y
-        idot = (-self.R * i + u_inp) / self.L        # diffeq. for RL circuit
+        Fmag = self._mag_force(i, y)                                    # uses helper to calc mag force
+        yddot = (Fmag - self.m * self.g + disturbance) / self.m         # acceleration in y (with disturbance)
+        idot = (-self.R * i + u_inp) / self.L                           # diffeq. for RL circuit
 
         return [ydot, yddot, idot]
 
@@ -73,12 +83,17 @@ class Dynamics:
         if dt is None:
             dt = self.dt_default
 
-        def f(state,u):                             # get the derivatives with derivatives()
-            return self.derivatives(state,u)        
+        # Get disturbance force at current time
+        disturbance = 0.0
+        if self.disturbance_fn is not None:
+            disturbance = self.disturbance_fn(self.current_time)
+
+        def f(state, u, dist=disturbance):                # get the derivatives with disturbance
+            return self.derivatives(state, u, dist)        
 
         y, ydot, i = self.state                                 # unpack
 
-        # range kutta method
+        # runge kutta method
 
         k1 = np.array(f(self.state, u_inp))
         k2 = np.array(f(self.state + 0.5 * dt * k1, u_inp))
@@ -91,6 +106,7 @@ class Dynamics:
         y_clamped = max(float(y_new), self.y_floor)     # makes sure ball does not go through floor, important
 
         self.state = [y_clamped, ydot_new, i_new]       # update the state values
+        self.current_time += dt                          # increment time tracker
         return self.state
     
     def simulate(
